@@ -23,11 +23,6 @@ impl Key {
         }
     }
 
-    pub fn with_parent(mut self, parent: &SharedKey) -> Self {
-        self.parent = Some(Rc::downgrade(parent));
-        self
-    }
-
     pub fn add_child(&mut self, child: SharedKey) {
         self.children.push(child);
     }
@@ -46,6 +41,26 @@ impl Key {
 
     pub fn children(&self) -> Vec<SharedKey> {
         self.children.clone()
+    }
+
+    pub fn from(
+        name: regashii::KeyName,
+        inner: regashii::Key,
+        parent: Option<SharedKey>,
+    ) -> SharedKey {
+        let key = Rc::new(RefCell::new(Key::new(name, inner)));
+
+        // If a parent is provided, add the new key as a child of the parent
+        // and store a weak reference to the parent in the new key
+        let parent = if let Some(parent) = parent {
+            parent.borrow_mut().add_child(key.clone());
+            Some(Rc::downgrade(&parent))
+        } else {
+            None
+        };
+        key.borrow_mut().parent = parent;
+
+        key
     }
 }
 
@@ -94,10 +109,7 @@ impl From<regashii::Registry> for Registry {
                     .get(&temp_name)
                     .cloned()
                     .unwrap_or(regashii::Key::new());
-                let new_key = Rc::new(RefCell::new(
-                    Key::new(temp_name.clone(), key).with_parent(&last_key),
-                ));
-                last_key.borrow_mut().add_child(Rc::clone(&new_key));
+                let new_key = Key::from(temp_name.clone(), key, Some(last_key));
                 map.insert(temp_name, Rc::clone(&new_key));
                 last_key = new_key;
             }
