@@ -66,11 +66,12 @@ impl Registry {
 
 impl From<regashii::Registry> for Registry {
     fn from(registry: regashii::Registry) -> Self {
+        let root_name = regashii::KeyName::new("");
         let root: SharedKey = Rc::new(RefCell::new(Key::new(
-            regashii::KeyName::new(""),
+            root_name.clone(),
             regashii::Key::default(),
         )));
-        let mut map = BTreeMap::from([(regashii::KeyName::new(""), root.clone())]);
+        let mut map = BTreeMap::from([(root_name, root.clone())]);
 
         for (key_name, _) in registry.keys() {
             let key_segments = key_name.raw().split('\\').collect::<Vec<_>>();
