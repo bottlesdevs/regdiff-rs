@@ -79,7 +79,7 @@ impl From<regashii::Registry> for Registry {
 
             for segment in key_segments {
                 new_key_name.push_str(segment);
-                new_key_name.push_str(r"\\");
+                new_key_name.push('\\');
 
                 let temp_name = regashii::KeyName::new(&new_key_name);
 
