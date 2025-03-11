@@ -77,6 +77,12 @@ impl Registry {
     pub fn get_key(&self, key_name: &regashii::KeyName) -> Option<SharedKey> {
         self.map.get(key_name).cloned()
     }
+
+    pub fn try_from<T: AsRef<std::path::Path>>(file: T) -> Result<Self, regashii::error::Read> {
+        let registry = regashii::Registry::deserialize_file(file)?;
+
+        Ok(registry.into())
+    }
 }
 
 impl From<regashii::Registry> for Registry {
