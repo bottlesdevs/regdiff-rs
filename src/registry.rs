@@ -124,3 +124,79 @@ impl From<regashii::Registry> for Registry {
         Self { root, map }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn open_registry() {
+        let registry = Registry::try_from("./registries/user.reg");
+        assert!(registry.is_ok())
+    }
+
+    #[test]
+    fn registry_get_key() {
+        let registry = Registry::try_from("./registries/user.reg").unwrap();
+        let key = registry.get_key(&regashii::KeyName::new("Software\\Wine"));
+        assert!(key.is_some());
+    }
+
+    #[test]
+    fn registry_key_name() {
+        let registry = Registry::try_from("./registries/user.reg").unwrap();
+        let key = registry
+            .get_key(&regashii::KeyName::new("Software\\Wine"))
+            .unwrap();
+        assert_eq!(key.borrow().name().raw(), "Software\\Wine");
+    }
+
+    #[test]
+    fn registry_get_key_none() {
+        let registry = Registry::try_from("./registries/user.reg").unwrap();
+        let key = registry.get_key(&regashii::KeyName::new("Software\\Wine\\NonExistent"));
+        assert!(key.is_none());
+    }
+
+    #[test]
+    fn registry_root() {
+        let registry = Registry::try_from("./registries/user.reg").unwrap();
+        let root = registry.root();
+        assert_eq!(root.borrow().name().raw(), "");
+    }
+
+    #[test]
+    fn count_registry_values() {
+        let registry = Registry::try_from("./registries/user.reg").unwrap();
+        let key = registry
+            .get_key(&regashii::KeyName::new("Software\\Wine\\X11 Driver"))
+            .unwrap();
+        assert_eq!(key.borrow().values().len(), 1);
+    }
+
+    #[test]
+    fn get_registry_values() {
+        let registry = Registry::try_from("./registries/user.reg").unwrap();
+        let key = registry
+            .get_key(&regashii::KeyName::new("Software\\Wine\\X11 Driver"))
+            .unwrap();
+        assert!(key.borrow().values().first().is_some());
+    }
+
+    #[test]
+    fn get_registry_values_none() {
+        let registry = Registry::try_from("./registries/user.reg").unwrap();
+        let key = registry
+            .get_key(&regashii::KeyName::new("Software\\Wine\\X11 Driver"))
+            .unwrap();
+        assert!(key.borrow().values().iter().nth(999).is_none());
+    }
+
+    #[test]
+    fn registry_children() {
+        let registry = Registry::try_from("./registries/user.reg").unwrap();
+        let key = registry.get_key(&regashii::KeyName::new("")).unwrap();
+        let children = key.borrow().children();
+        assert_eq!(children.len(), 6);
+    }
+}
