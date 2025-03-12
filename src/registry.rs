@@ -1,25 +1,58 @@
-use regashii::Value;
+use regashii::ValueName;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::rc::{Rc, Weak};
 
 pub type SharedKey = Rc<RefCell<Key>>;
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum Status {
+    Unchanged,
+    Inserted,
+    Deleted,
+    Updated,
+}
+
+#[derive(Debug)]
+pub struct Value {
+    name: ValueName,
+    value: regashii::Value,
+    status: Status,
+}
+
+impl Value {
+    pub fn from(name: ValueName, value: regashii::Value) -> Self {
+        Self {
+            name,
+            value,
+            status: Status::Unchanged,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Key {
     name: regashii::KeyName,
-    inner: regashii::Key,
     parent: Option<Weak<RefCell<Key>>>,
     children: Vec<SharedKey>,
+    values: BTreeMap<ValueName, Value>,
+    status: Status,
 }
 
 impl Key {
     pub fn new(name: regashii::KeyName, inner: regashii::Key) -> Self {
+        let values = inner
+            .values()
+            .iter()
+            .map(|(name, value)| (name.clone(), Value::from(name.clone(), value.clone())))
+            .collect();
+
         Self {
             name,
-            inner,
             parent: None,
+            values,
             children: Vec::new(),
+            status: Status::Unchanged,
         }
     }
 
@@ -31,8 +64,8 @@ impl Key {
         &self.name
     }
 
-    pub fn values(&self) -> Vec<&Value> {
-        self.inner.values().iter().map(|(_, value)| value).collect()
+    pub fn values(&self) -> &BTreeMap<ValueName, Value> {
+        &self.values
     }
 
     pub fn parent(&self) -> Option<SharedKey> {
@@ -180,7 +213,7 @@ mod tests {
         let key = registry
             .get_key(&regashii::KeyName::new("Software\\Wine\\X11 Driver"))
             .unwrap();
-        assert!(key.borrow().values().first().is_some());
+        assert!(key.borrow().values().iter().nth(0).is_some());
     }
 
     #[test]
