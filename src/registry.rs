@@ -1,4 +1,3 @@
-use regashii::ValueName;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::rc::{Rc, Weak};
@@ -7,16 +6,16 @@ pub type SharedKey = Rc<RefCell<Key>>;
 
 #[derive(Debug, PartialEq)]
 pub struct Value {
-    name: ValueName,
+    name: regashii::ValueName,
     value: regashii::Value,
 }
 
 impl Value {
-    pub fn from(name: ValueName, value: regashii::Value) -> Self {
+    pub fn from(name: regashii::ValueName, value: regashii::Value) -> Self {
         Self { name, value }
     }
 
-    pub fn name(&self) -> &ValueName {
+    pub fn name(&self) -> &regashii::ValueName {
         &self.name
     }
 
@@ -30,7 +29,7 @@ pub struct Key {
     name: regashii::KeyName,
     parent: Option<Weak<RefCell<Key>>>,
     children: Vec<SharedKey>,
-    values: BTreeMap<ValueName, Value>,
+    values: BTreeMap<regashii::ValueName, Value>,
 }
 
 impl Key {
@@ -57,7 +56,7 @@ impl Key {
         &self.name
     }
 
-    pub fn values(&self) -> &BTreeMap<ValueName, Value> {
+    pub fn values(&self) -> &BTreeMap<regashii::ValueName, Value> {
         &self.values
     }
 
