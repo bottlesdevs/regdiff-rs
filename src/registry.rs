@@ -5,28 +5,23 @@ use std::rc::{Rc, Weak};
 
 pub type SharedKey = Rc<RefCell<Key>>;
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum Status {
-    Unchanged,
-    Inserted,
-    Deleted,
-    Updated,
-}
-
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Value {
     name: ValueName,
     value: regashii::Value,
-    status: Status,
 }
 
 impl Value {
     pub fn from(name: ValueName, value: regashii::Value) -> Self {
-        Self {
-            name,
-            value,
-            status: Status::Unchanged,
-        }
+        Self { name, value }
+    }
+
+    pub fn name(&self) -> &ValueName {
+        &self.name
+    }
+
+    pub fn value(&self) -> &regashii::Value {
+        &self.value
     }
 }
 
@@ -36,7 +31,6 @@ pub struct Key {
     parent: Option<Weak<RefCell<Key>>>,
     children: Vec<SharedKey>,
     values: BTreeMap<ValueName, Value>,
-    status: Status,
 }
 
 impl Key {
@@ -52,7 +46,6 @@ impl Key {
             parent: None,
             values,
             children: Vec::new(),
-            status: Status::Unchanged,
         }
     }
 
