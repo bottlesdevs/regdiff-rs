@@ -4,17 +4,21 @@ use crate::{
     prelude::Registry,
     registry::{SharedKey, Value},
 };
-use regashii::{KeyName, ValueName};
 
 #[derive(Debug)]
-pub enum Operation<Name, Data> {
-    Add { name: Name, data: Data },
-    Delete { name: Name },
-    Update { name: Name, new: Data },
+pub enum Operation {
+    Add {
+        name: regashii::KeyName,
+        data: regashii::Key,
+    },
+    Delete {
+        name: regashii::KeyName,
+    },
+    Update {
+        name: regashii::KeyName,
+        new: regashii::Key,
+    },
 }
-
-pub type ValueOperation = Operation<ValueName, regashii::Value>;
-pub type KeyOperation = Operation<KeyName, regashii::Key>;
 
 pub trait Diff {
     type Output;
@@ -63,19 +67,20 @@ pub fn combine_values<'a, 'b>(
 }
 
 impl Diff for Value {
-    type Output = Option<ValueOperation>;
+    type Output = Option<Operation>;
     fn diff(this: Option<&Self>, other: Option<&Self>) -> Self::Output {
         match (this, other) {
-            (Some(old), None) => Some(ValueOperation::Delete {
-                name: old.name().clone(),
+            (Some(old), None) => Some(Operation::Update {
+                name: old.key_name().clone(),
+                new: regashii::Key::new().with(old.name().clone(), regashii::Value::Delete),
             }),
-            (None, Some(new)) => Some(ValueOperation::Add {
-                name: new.name().clone(),
-                data: new.value().clone(),
+            (None, Some(new)) => Some(Operation::Add {
+                name: new.key_name().clone(),
+                data: regashii::Key::new().with(new.name().clone(), new.value().clone()),
             }),
-            (Some(old), Some(new)) if old != new => Some(ValueOperation::Update {
-                name: old.name().clone(),
-                new: new.value().clone(),
+            (Some(old), Some(new)) if old != new => Some(Operation::Update {
+                name: old.key_name().clone(),
+                new: regashii::Key::new().with(old.name().clone(), new.value().clone()),
             }),
             _ => None,
         }
@@ -83,13 +88,13 @@ impl Diff for Value {
 }
 
 impl Diff for SharedKey {
-    type Output = Vec<KeyOperation>;
+    type Output = Vec<Operation>;
     fn diff(this: Option<&Self>, other: Option<&Self>) -> Self::Output {
         match (this, other) {
-            (Some(old), None) => vec![KeyOperation::Delete {
+            (Some(old), None) => vec![Operation::Delete {
                 name: old.borrow().path().clone(),
             }],
-            (None, Some(new)) => vec![KeyOperation::Add {
+            (None, Some(new)) => vec![Operation::Add {
                 name: new.borrow().path().clone(),
                 data: new.borrow().inner().clone(),
             }],
@@ -102,20 +107,6 @@ impl Diff for SharedKey {
                     .into_iter()
                     .for_each(|(old_val, new_val)| {
                         if let Some(op) = Value::diff(old_val, new_val) {
-                            let op = match op {
-                                Operation::Add { name, data } => KeyOperation::Add {
-                                    name: old_key.borrow().path().clone(),
-                                    data: regashii::Key::new().with(name, data),
-                                },
-                                Operation::Delete { name } => KeyOperation::Update {
-                                    name: old_key.borrow().path().clone(),
-                                    new: regashii::Key::new().with(name, regashii::Value::Delete),
-                                },
-                                Operation::Update { name, new } => KeyOperation::Update {
-                                    name: old_key.borrow().path().clone(),
-                                    new: regashii::Key::new().with(name, new),
-                                },
-                            };
                             operations.push(op);
                         }
                     });

@@ -33,11 +33,20 @@ pub type SharedKey = Rc<RefCell<Key>>;
 pub struct Value {
     name: regashii::ValueName,
     value: regashii::Value,
+    key_name: regashii::KeyName,
 }
 
 impl Value {
-    pub fn from(name: regashii::ValueName, value: regashii::Value) -> Self {
-        Self { name, value }
+    pub fn from(
+        name: regashii::ValueName,
+        value: regashii::Value,
+        key_name: regashii::KeyName,
+    ) -> Self {
+        Self {
+            name,
+            value,
+            key_name,
+        }
     }
 
     pub fn name(&self) -> &regashii::ValueName {
@@ -46,6 +55,10 @@ impl Value {
 
     pub fn value(&self) -> &regashii::Value {
         &self.value
+    }
+
+    pub fn key_name(&self) -> &regashii::KeyName {
+        &self.key_name
     }
 }
 
@@ -61,15 +74,21 @@ pub struct Key {
 
 impl Key {
     pub fn new(name: &str, inner: regashii::Key, parent: Option<SharedKey>) -> SharedKey {
+        let path = Self::generate_path(name, parent.clone());
         let values = inner
             .values()
             .iter()
-            .map(|(name, value)| (name.clone(), Value::from(name.clone(), value.clone())))
+            .map(|(name, value)| {
+                (
+                    name.clone(),
+                    Value::from(name.clone(), value.clone(), path.clone()),
+                )
+            })
             .collect();
 
         let key = Rc::new(RefCell::new(Self {
             name: name.to_string(),
-            path: Self::generate_path(name, parent.clone()),
+            path,
             parent: None,
             values,
             children: Vec::new(),
