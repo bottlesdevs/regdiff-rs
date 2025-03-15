@@ -52,6 +52,7 @@ impl Value {
 #[derive(Debug)]
 pub struct Key {
     name: String,
+    path: regashii::KeyName,
     parent: Option<Weak<RefCell<Key>>>,
     children: Vec<SharedKey>,
     values: BTreeMap<regashii::ValueName, Value>,
@@ -59,20 +60,43 @@ pub struct Key {
 }
 
 impl Key {
-    pub fn new(name: &str, inner: regashii::Key) -> Self {
+    pub fn new(name: &str, inner: regashii::Key, parent: Option<SharedKey>) -> SharedKey {
         let values = inner
             .values()
             .iter()
             .map(|(name, value)| (name.clone(), Value::from(name.clone(), value.clone())))
             .collect();
 
-        Self {
+        let key = Rc::new(RefCell::new(Self {
             name: name.to_string(),
+            path: Self::generate_path(name, parent.clone()),
             parent: None,
             values,
             children: Vec::new(),
             inner,
+        }));
+
+        let parent = if let Some(parent) = parent {
+            parent.borrow_mut().add_child(key.clone());
+            Some(Rc::downgrade(&parent))
+        } else {
+            None
+        };
+        key.borrow_mut().parent = parent;
+
+        key
+    }
+
+    fn generate_path(name: &str, mut parent: Option<SharedKey>) -> regashii::KeyName {
+        let mut segments = vec![name.to_string()];
+        while let Some(key) = parent {
+            let name = key.borrow().name().to_string();
+            segments.push(name);
+            parent = key.borrow().parent();
         }
+
+        segments.reverse();
+        regashii::KeyName::new(&segments.join("\\"))
     }
 
     pub fn add_child(&mut self, child: SharedKey) {
@@ -83,19 +107,8 @@ impl Key {
         &self.name
     }
 
-    pub fn path(&self) -> regashii::KeyName {
-        let mut segments = vec![self.name().to_string()];
-        let mut parent = self.parent();
-
-        while let Some(key) = parent {
-            let name = key.borrow().name().to_string();
-            segments.push(name);
-            parent = key.borrow().parent();
-        }
-
-        segments.reverse();
-
-        regashii::KeyName::new(&segments.join("\\"))
+    pub fn path(&self) -> &regashii::KeyName {
+        &self.path
     }
 
     pub fn values(&self) -> &BTreeMap<regashii::ValueName, Value> {
@@ -108,22 +121,6 @@ impl Key {
 
     pub fn children(&self) -> Vec<SharedKey> {
         self.children.clone()
-    }
-
-    pub fn from(name: &str, inner: regashii::Key, parent: Option<SharedKey>) -> SharedKey {
-        let key = Rc::new(RefCell::new(Key::new(name, inner)));
-
-        // If a parent is provided, add the new key as a child of the parent
-        // and store a weak reference to the parent in the new key
-        let parent = if let Some(parent) = parent {
-            parent.borrow_mut().add_child(key.clone());
-            Some(Rc::downgrade(&parent))
-        } else {
-            None
-        };
-        key.borrow_mut().parent = parent;
-
-        key
     }
 
     pub fn inner(&self) -> &regashii::Key {
@@ -155,40 +152,39 @@ impl Registry {
     }
 
     fn from(registry: regashii::Registry, hive: Hive) -> Self {
-        let root_name: regashii::KeyName = hive.into();
-        let root: SharedKey = Rc::new(RefCell::new(Key::new(
-            root_name.raw(),
-            regashii::Key::default(),
-        )));
+        let root_path: regashii::KeyName = hive.into();
+        let root: SharedKey = Key::new(root_path.raw(), regashii::Key::new(), None);
         let mut map = BTreeMap::from([(regashii::KeyName::new(""), root.clone())]);
 
         for (key_name, _) in registry.keys() {
-            let key_segments = key_name.raw().split('\\').collect::<Vec<_>>();
-            let mut key_path = String::new();
-            let mut last_key = Rc::clone(&root);
-
-            for segment in key_segments {
-                key_path.push_str(segment);
-                key_path.push('\\');
-
-                let temp_keyname = regashii::KeyName::new(key_path.clone());
-                if let Some(key) = map.get(&temp_keyname) {
-                    last_key = Rc::clone(key);
-                    continue;
-                }
-
-                let key = registry
-                    .keys()
-                    .get(&temp_keyname)
-                    .cloned()
-                    .unwrap_or(regashii::Key::new());
-                let new_key = Key::from(segment, key, Some(last_key));
-                map.insert(temp_keyname, Rc::clone(&new_key));
-                last_key = new_key;
-            }
+            Self::create_key(key_name, registry.keys(), &mut map);
         }
 
         Self { root, map }
+    }
+
+    fn create_key(
+        path: &regashii::KeyName,
+        keys: &BTreeMap<regashii::KeyName, regashii::Key>,
+        map: &mut BTreeMap<regashii::KeyName, SharedKey>,
+    ) -> SharedKey {
+        if let Some(key) = map.get(path) {
+            return key.clone();
+        }
+
+        let inner = keys.get(path).cloned().unwrap_or(regashii::Key::new());
+        let mut segments: Vec<&str> = path.raw().split('\\').collect();
+        let name = segments.pop().unwrap();
+        let parent_path = regashii::KeyName::new(segments.join("\\"));
+
+        let parent = map
+            .get(&parent_path)
+            .cloned()
+            .unwrap_or_else(|| Self::create_key(&parent_path, keys, map));
+
+        let key = Key::new(name, inner, Some(parent));
+        map.insert(path.clone(), key.clone());
+        key
     }
 }
 
