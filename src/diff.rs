@@ -26,21 +26,18 @@ pub trait Diff {
 }
 
 pub fn combine_child_keys(
-    old: &[SharedKey],
-    new: &[SharedKey],
+    old: &BTreeMap<regashii::KeyName, SharedKey>,
+    new: &BTreeMap<regashii::KeyName, SharedKey>,
 ) -> Vec<(Option<SharedKey>, Option<SharedKey>)> {
     let mut pairs: Vec<(Option<SharedKey>, Option<SharedKey>)> = Vec::new();
 
-    for o in old.iter() {
-        let name = o.borrow().path().clone();
-        let matching_new = new.iter().find(|&n| n.borrow().path() == &name).cloned();
-        pairs.push((Some(o.clone()), matching_new));
+    for (name, value) in old.iter() {
+        pairs.push((Some(value.clone()), new.get(name).cloned()));
     }
 
-    for n in new.iter() {
-        let name = n.borrow().path().clone();
-        if !old.iter().any(|o| o.borrow().path() == &name) {
-            pairs.push((None, Some(n.clone())));
+    for (name, value) in new.iter() {
+        if !old.contains_key(name) {
+            pairs.push((None, Some(value.clone())));
         }
     }
 
@@ -112,8 +109,8 @@ impl Diff for SharedKey {
                     });
 
                 // Recursively diff children
-                let old_children = old_key.borrow().children();
-                let new_children = new_key.borrow().children();
+                let old_children = old_key_ref.children();
+                let new_children = new_key_ref.children();
 
                 combine_child_keys(&old_children, &new_children)
                     .into_iter()

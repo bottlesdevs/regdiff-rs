@@ -7,8 +7,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let key = registry.get_key(&KeyName::new(""));
     if let Some(key) = key {
         println!("Keys:");
-        for child in key.borrow().children() {
-            println!("  {:?}", child.borrow().name());
+        for (name, _) in key.borrow().children() {
+            println!("  {:?}", name);
         }
 
         println!("Values:");

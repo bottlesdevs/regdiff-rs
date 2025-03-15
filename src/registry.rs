@@ -67,7 +67,7 @@ pub struct Key {
     name: String,
     path: regashii::KeyName,
     parent: Option<Weak<RefCell<Key>>>,
-    children: Vec<SharedKey>,
+    children: BTreeMap<regashii::KeyName, SharedKey>,
     values: BTreeMap<regashii::ValueName, Value>,
 }
 
@@ -93,7 +93,7 @@ impl Key {
             path,
             parent: None,
             values,
-            children: Vec::new(),
+            children: BTreeMap::new(),
         }));
 
         let parent = if let Some(parent) = parent {
@@ -120,7 +120,8 @@ impl Key {
     }
 
     pub fn add_child(&mut self, child: SharedKey) {
-        self.children.push(child);
+        let key = child.borrow().path().clone();
+        self.children.insert(key, child);
     }
 
     pub fn name(&self) -> &str {
@@ -139,8 +140,8 @@ impl Key {
         self.parent.as_ref().and_then(|weak| weak.upgrade())
     }
 
-    pub fn children(&self) -> Vec<SharedKey> {
-        self.children.clone()
+    pub fn children(&self) -> &BTreeMap<regashii::KeyName, SharedKey> {
+        &self.children
     }
 
     pub fn inner(&self) -> regashii::Key {
@@ -311,7 +312,8 @@ mod tests {
     fn test_root_key_children_count_is_correct() {
         let registry = Registry::try_from("./registries/user.reg", Hive::CurrentUser).unwrap();
         let key = registry.get_key(&regashii::KeyName::new("")).unwrap();
-        let children = key.borrow().children();
+        let k = key.borrow();
+        let children = k.children();
         assert_eq!(children.len(), 6);
     }
 }
