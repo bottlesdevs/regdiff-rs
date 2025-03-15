@@ -96,7 +96,7 @@ impl Diff for SharedKey {
             }],
             (None, Some(new)) => vec![Operation::Add {
                 name: new.borrow().path().clone(),
-                data: new.borrow().inner().clone(),
+                data: new.borrow().inner(),
             }],
             (Some(old_key), Some(new_key)) => {
                 let mut operations = vec![];

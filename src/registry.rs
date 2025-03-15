@@ -69,14 +69,16 @@ pub struct Key {
     parent: Option<Weak<RefCell<Key>>>,
     children: Vec<SharedKey>,
     values: BTreeMap<regashii::ValueName, Value>,
-    inner: regashii::Key,
 }
 
 impl Key {
-    pub fn new(name: &str, inner: regashii::Key, parent: Option<SharedKey>) -> SharedKey {
+    pub fn new(
+        name: &str,
+        values: &BTreeMap<regashii::ValueName, regashii::Value>,
+        parent: Option<SharedKey>,
+    ) -> SharedKey {
         let path = Self::generate_path(name, parent.clone());
-        let values = inner
-            .values()
+        let values = values
             .iter()
             .map(|(name, value)| {
                 (
@@ -92,7 +94,6 @@ impl Key {
             parent: None,
             values,
             children: Vec::new(),
-            inner,
         }));
 
         let parent = if let Some(parent) = parent {
@@ -142,8 +143,14 @@ impl Key {
         self.children.clone()
     }
 
-    pub fn inner(&self) -> &regashii::Key {
-        &self.inner
+    pub fn inner(&self) -> regashii::Key {
+        let mut key = regashii::Key::new();
+
+        for value in self.values.values() {
+            key = key.with(value.name().clone(), value.value().clone());
+        }
+
+        key
     }
 }
 
@@ -172,7 +179,7 @@ impl Registry {
 
     fn from(registry: regashii::Registry, hive: Hive) -> Self {
         let root_path: regashii::KeyName = hive.into();
-        let root: SharedKey = Key::new(root_path.raw(), regashii::Key::new(), None);
+        let root: SharedKey = Key::new(root_path.raw(), &BTreeMap::new(), None);
         let mut map = BTreeMap::from([(regashii::KeyName::new(""), root.clone())]);
 
         for (key_name, _) in registry.keys() {
@@ -201,7 +208,7 @@ impl Registry {
             .cloned()
             .unwrap_or_else(|| Self::create_key(&parent_path, keys, map));
 
-        let key = Key::new(name, inner, Some(parent));
+        let key = Key::new(name, inner.values(), Some(parent));
         map.insert(path.clone(), key.clone());
         key
     }
