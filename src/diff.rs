@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use crate::{
     prelude::Registry,
     registry::{SharedKey, Value},
@@ -42,21 +44,18 @@ pub fn combine_child_keys(
 }
 
 pub fn combine_values<'a, 'b>(
-    old: &[&'a Value],
-    new: &[&'b Value],
+    old: &'a BTreeMap<regashii::ValueName, Value>,
+    new: &'b BTreeMap<regashii::ValueName, Value>,
 ) -> Vec<(Option<&'a Value>, Option<&'b Value>)> {
-    let mut pairs: Vec<(Option<&Value>, Option<&Value>)> = Vec::new();
+    let mut pairs: Vec<(Option<&'a Value>, Option<&'b Value>)> = Vec::new();
 
-    for &o in old.iter() {
-        let name = o.name();
-        let matching_new = new.iter().find(|&n| n.name() == name).cloned();
-        pairs.push((Some(o), matching_new));
+    for (name, value) in old.iter() {
+        pairs.push((Some(value), new.get(name)));
     }
 
-    for n in new.iter() {
-        let name = n.name();
-        if !old.iter().any(|o| o.name() == name) {
-            pairs.push((None, Some(n)));
+    for (name, value) in new.iter() {
+        if !old.contains_key(name) {
+            pairs.push((None, Some(value)));
         }
     }
 
@@ -97,11 +96,9 @@ impl Diff for SharedKey {
             (Some(old_key), Some(new_key)) => {
                 let mut operations = vec![];
                 let old_key_ref = old_key.borrow();
-                let old_values: Vec<&Value> = old_key_ref.values().iter().map(|(_, v)| v).collect();
                 let new_key_ref = new_key.borrow();
-                let new_values: Vec<&Value> = new_key_ref.values().iter().map(|(_, v)| v).collect();
 
-                combine_values(&old_values, &new_values)
+                combine_values(old_key_ref.values(), new_key_ref.values())
                     .into_iter()
                     .for_each(|(old_val, new_val)| {
                         if let Some(op) = Value::diff(old_val, new_val) {
