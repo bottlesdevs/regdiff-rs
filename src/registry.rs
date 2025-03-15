@@ -2,6 +2,31 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::rc::{Rc, Weak};
 
+#[derive(Clone, Debug)]
+pub enum Hive {
+    LocalMachine,
+    CurrentUser,
+}
+
+impl std::fmt::Display for Hive {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Hive::LocalMachine => "HKEY_LOCAL_MACHINE",
+                Hive::CurrentUser => "HKEY_CURRENT_USER",
+            }
+        )
+    }
+}
+
+impl From<Hive> for regashii::KeyName {
+    fn from(hive: Hive) -> Self {
+        regashii::KeyName::new(&hive.to_string())
+    }
+}
+
 pub type SharedKey = Rc<RefCell<Key>>;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -26,7 +51,7 @@ impl Value {
 
 #[derive(Debug)]
 pub struct Key {
-    name: regashii::KeyName,
+    name: String,
     parent: Option<Weak<RefCell<Key>>>,
     children: Vec<SharedKey>,
     values: BTreeMap<regashii::ValueName, Value>,
@@ -34,7 +59,7 @@ pub struct Key {
 }
 
 impl Key {
-    pub fn new(name: regashii::KeyName, inner: regashii::Key) -> Self {
+    pub fn new(name: &str, inner: regashii::Key) -> Self {
         let values = inner
             .values()
             .iter()
@@ -42,7 +67,7 @@ impl Key {
             .collect();
 
         Self {
-            name,
+            name: name.to_string(),
             parent: None,
             values,
             children: Vec::new(),
@@ -54,8 +79,23 @@ impl Key {
         self.children.push(child);
     }
 
-    pub fn name(&self) -> &regashii::KeyName {
+    pub fn name(&self) -> &str {
         &self.name
+    }
+
+    pub fn path(&self) -> regashii::KeyName {
+        let mut segments = vec![self.name().to_string()];
+        let mut parent = self.parent();
+
+        while let Some(key) = parent {
+            let name = key.borrow().name().to_string();
+            segments.push(name);
+            parent = key.borrow().parent();
+        }
+
+        segments.reverse();
+
+        regashii::KeyName::new(&segments.join("\\"))
     }
 
     pub fn values(&self) -> &BTreeMap<regashii::ValueName, Value> {
@@ -70,11 +110,7 @@ impl Key {
         self.children.clone()
     }
 
-    pub fn from(
-        name: regashii::KeyName,
-        inner: regashii::Key,
-        parent: Option<SharedKey>,
-    ) -> SharedKey {
+    pub fn from(name: &str, inner: regashii::Key, parent: Option<SharedKey>) -> SharedKey {
         let key = Rc::new(RefCell::new(Key::new(name, inner)));
 
         // If a parent is provided, add the new key as a child of the parent
@@ -109,45 +145,45 @@ impl Registry {
         self.map.get(key_name).cloned()
     }
 
-    pub fn try_from<T: AsRef<std::path::Path>>(file: T) -> Result<Self, regashii::error::Read> {
+    pub fn try_from<T: AsRef<std::path::Path>>(
+        file: T,
+        hive: Hive,
+    ) -> Result<Self, regashii::error::Read> {
         let registry = regashii::Registry::deserialize_file(file)?;
 
-        Ok(registry.into())
+        Ok(Self::from(registry, hive))
     }
-}
 
-impl From<regashii::Registry> for Registry {
-    fn from(registry: regashii::Registry) -> Self {
-        let root_name = regashii::KeyName::new("");
+    fn from(registry: regashii::Registry, hive: Hive) -> Self {
+        let root_name: regashii::KeyName = hive.into();
         let root: SharedKey = Rc::new(RefCell::new(Key::new(
-            root_name.clone(),
+            root_name.raw(),
             regashii::Key::default(),
         )));
-        let mut map = BTreeMap::from([(root_name, root.clone())]);
+        let mut map = BTreeMap::from([(regashii::KeyName::new(""), root.clone())]);
 
         for (key_name, _) in registry.keys() {
             let key_segments = key_name.raw().split('\\').collect::<Vec<_>>();
-            let mut new_key_name = String::new();
+            let mut key_path = String::new();
             let mut last_key = Rc::clone(&root);
 
             for segment in key_segments {
-                new_key_name.push_str(segment);
-                new_key_name.push('\\');
+                key_path.push_str(segment);
+                key_path.push('\\');
 
-                let temp_name = regashii::KeyName::new(&new_key_name);
-
-                if let Some(key) = map.get(&temp_name) {
+                let temp_keyname = regashii::KeyName::new(key_path.clone());
+                if let Some(key) = map.get(&temp_keyname) {
                     last_key = Rc::clone(key);
                     continue;
                 }
 
                 let key = registry
                     .keys()
-                    .get(&temp_name)
+                    .get(&temp_keyname)
                     .cloned()
                     .unwrap_or(regashii::Key::new());
-                let new_key = Key::from(temp_name.clone(), key, Some(last_key));
-                map.insert(temp_name, Rc::clone(&new_key));
+                let new_key = Key::from(segment, key, Some(last_key));
+                map.insert(temp_keyname, Rc::clone(&new_key));
                 last_key = new_key;
             }
         }
@@ -162,43 +198,55 @@ mod tests {
 
     #[test]
     fn open_registry() {
-        let registry = Registry::try_from("./registries/user.reg");
+        let registry = Registry::try_from("./registries/user.reg", Hive::CurrentUser);
         assert!(registry.is_ok())
     }
 
     #[test]
     fn registry_get_key() {
-        let registry = Registry::try_from("./registries/user.reg").unwrap();
+        let registry = Registry::try_from("./registries/user.reg", Hive::CurrentUser).unwrap();
         let key = registry.get_key(&regashii::KeyName::new("Software\\Wine"));
         assert!(key.is_some());
     }
 
     #[test]
     fn registry_key_name() {
-        let registry = Registry::try_from("./registries/user.reg").unwrap();
+        let registry = Registry::try_from("./registries/user.reg", Hive::CurrentUser).unwrap();
         let key = registry
             .get_key(&regashii::KeyName::new("Software\\Wine"))
             .unwrap();
-        assert_eq!(key.borrow().name().raw(), "Software\\Wine");
+        assert_eq!(key.borrow().name(), "Wine");
     }
 
     #[test]
     fn registry_get_key_none() {
-        let registry = Registry::try_from("./registries/user.reg").unwrap();
+        let registry = Registry::try_from("./registries/user.reg", Hive::CurrentUser).unwrap();
         let key = registry.get_key(&regashii::KeyName::new("Software\\Wine\\NonExistent"));
         assert!(key.is_none());
     }
 
     #[test]
+    fn registry_get_key_path() {
+        let registry = Registry::try_from("./registries/user.reg", Hive::CurrentUser).unwrap();
+        let key = registry
+            .get_key(&regashii::KeyName::new("Software\\Wine"))
+            .unwrap();
+        assert_eq!(
+            key.borrow().path().raw(),
+            "HKEY_CURRENT_USER\\Software\\Wine"
+        );
+    }
+
+    #[test]
     fn registry_root() {
-        let registry = Registry::try_from("./registries/user.reg").unwrap();
+        let registry = Registry::try_from("./registries/user.reg", Hive::CurrentUser).unwrap();
         let root = registry.root();
-        assert_eq!(root.borrow().name().raw(), "");
+        assert_eq!(root.borrow().name(), "HKEY_CURRENT_USER");
     }
 
     #[test]
     fn count_registry_values() {
-        let registry = Registry::try_from("./registries/user.reg").unwrap();
+        let registry = Registry::try_from("./registries/user.reg", Hive::CurrentUser).unwrap();
         let key = registry
             .get_key(&regashii::KeyName::new("Software\\Wine\\X11 Driver"))
             .unwrap();
@@ -207,7 +255,7 @@ mod tests {
 
     #[test]
     fn get_registry_values() {
-        let registry = Registry::try_from("./registries/user.reg").unwrap();
+        let registry = Registry::try_from("./registries/user.reg", Hive::CurrentUser).unwrap();
         let key = registry
             .get_key(&regashii::KeyName::new("Software\\Wine\\X11 Driver"))
             .unwrap();
@@ -216,7 +264,7 @@ mod tests {
 
     #[test]
     fn get_registry_values_none() {
-        let registry = Registry::try_from("./registries/user.reg").unwrap();
+        let registry = Registry::try_from("./registries/user.reg", Hive::CurrentUser).unwrap();
         let key = registry
             .get_key(&regashii::KeyName::new("Software\\Wine\\X11 Driver"))
             .unwrap();
@@ -225,7 +273,7 @@ mod tests {
 
     #[test]
     fn registry_children() {
-        let registry = Registry::try_from("./registries/user.reg").unwrap();
+        let registry = Registry::try_from("./registries/user.reg", Hive::CurrentUser).unwrap();
         let key = registry.get_key(&regashii::KeyName::new("")).unwrap();
         let children = key.borrow().children();
         assert_eq!(children.len(), 6);

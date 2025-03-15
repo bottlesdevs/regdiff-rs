@@ -26,14 +26,14 @@ pub fn combine_child_keys(
     let mut pairs: Vec<(Option<SharedKey>, Option<SharedKey>)> = Vec::new();
 
     for o in old.iter() {
-        let name = o.borrow().name().clone();
-        let matching_new = new.iter().find(|&n| n.borrow().name() == &name).cloned();
+        let name = o.borrow().path();
+        let matching_new = new.iter().find(|&n| n.borrow().path() == name).cloned();
         pairs.push((Some(o.clone()), matching_new));
     }
 
     for n in new.iter() {
-        let name = n.borrow().name().clone();
-        if !old.iter().any(|o| o.borrow().name() == &name) {
+        let name = n.borrow().path();
+        if !old.iter().any(|o| o.borrow().path() == name) {
             pairs.push((None, Some(n.clone())));
         }
     }
@@ -85,10 +85,10 @@ impl Diff for SharedKey {
     fn diff(this: Option<&Self>, other: Option<&Self>) -> Self::Output {
         match (this, other) {
             (Some(old), None) => vec![KeyOperation::Delete {
-                name: old.borrow().name().clone(),
+                name: old.borrow().path(),
             }],
             (None, Some(new)) => vec![KeyOperation::Add {
-                name: new.borrow().name().clone(),
+                name: new.borrow().path(),
                 data: new.borrow().inner().clone(),
             }],
             (Some(old_key), Some(new_key)) => {
@@ -112,15 +112,15 @@ impl Diff for SharedKey {
                         if let Some(op) = Value::diff(old_val.as_ref(), new_val.as_ref()) {
                             let op = match op {
                                 Operation::Add { name, data } => KeyOperation::Add {
-                                    name: old_key.borrow().name().clone(),
+                                    name: old_key.borrow().path(),
                                     data: regashii::Key::new().with(name, data),
                                 },
                                 Operation::Delete { name } => KeyOperation::Update {
-                                    name: old_key.borrow().name().clone(),
+                                    name: old_key.borrow().path(),
                                     new: regashii::Key::new().with(name, regashii::Value::Delete),
                                 },
                                 Operation::Update { name, new } => KeyOperation::Update {
-                                    name: old_key.borrow().name().clone(),
+                                    name: old_key.borrow().path(),
                                     new: regashii::Key::new().with(name, new),
                                 },
                             };
