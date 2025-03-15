@@ -41,19 +41,22 @@ pub fn combine_child_keys(
     pairs
 }
 
-pub fn combine_values(old: &[Value], new: &[Value]) -> Vec<(Option<Value>, Option<Value>)> {
-    let mut pairs: Vec<(Option<Value>, Option<Value>)> = Vec::new();
+pub fn combine_values<'a, 'b>(
+    old: &[&'a Value],
+    new: &[&'b Value],
+) -> Vec<(Option<&'a Value>, Option<&'b Value>)> {
+    let mut pairs: Vec<(Option<&Value>, Option<&Value>)> = Vec::new();
 
-    for o in old.iter() {
-        let name = o.name().clone();
-        let matching_new = new.iter().find(|&n| n.name() == &name).cloned();
-        pairs.push((Some(o.clone()), matching_new));
+    for &o in old.iter() {
+        let name = o.name();
+        let matching_new = new.iter().find(|&n| n.name() == name).cloned();
+        pairs.push((Some(o), matching_new));
     }
 
     for n in new.iter() {
-        let name = n.name().clone();
-        if !old.iter().any(|o| o.name() == &name) {
-            pairs.push((None, Some(n.clone())));
+        let name = n.name();
+        if !old.iter().any(|o| o.name() == name) {
+            pairs.push((None, Some(n)));
         }
     }
 
@@ -93,23 +96,15 @@ impl Diff for SharedKey {
             }],
             (Some(old_key), Some(new_key)) => {
                 let mut operations = vec![];
-                let old_values: Vec<Value> = old_key
-                    .borrow()
-                    .values()
-                    .iter()
-                    .map(|(_, v)| v.clone())
-                    .collect();
-                let new_values: Vec<Value> = new_key
-                    .borrow()
-                    .values()
-                    .iter()
-                    .map(|(_, v)| v.clone())
-                    .collect();
+                let old_key_ref = old_key.borrow();
+                let old_values: Vec<&Value> = old_key_ref.values().iter().map(|(_, v)| v).collect();
+                let new_key_ref = new_key.borrow();
+                let new_values: Vec<&Value> = new_key_ref.values().iter().map(|(_, v)| v).collect();
 
                 combine_values(&old_values, &new_values)
                     .into_iter()
                     .for_each(|(old_val, new_val)| {
-                        if let Some(op) = Value::diff(old_val.as_ref(), new_val.as_ref()) {
+                        if let Some(op) = Value::diff(old_val, new_val) {
                             let op = match op {
                                 Operation::Add { name, data } => KeyOperation::Add {
                                     name: old_key.borrow().path(),
