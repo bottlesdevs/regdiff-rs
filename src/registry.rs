@@ -193,20 +193,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn open_registry() {
+    fn test_open_registry_success() {
         let registry = Registry::try_from("./registries/user.reg", Hive::CurrentUser);
         assert!(registry.is_ok())
     }
 
     #[test]
-    fn registry_get_key() {
+    fn test_registry_get_root_key() {
+        let registry = Registry::try_from("./registries/user.reg", Hive::CurrentUser).unwrap();
+        let root = registry.root();
+        assert_eq!(root.borrow().name(), "HKEY_CURRENT_USER");
+        assert_eq!(root.borrow().path().raw(), "HKEY_CURRENT_USER");
+    }
+
+    #[test]
+    fn test_get_existing_registry_key() {
         let registry = Registry::try_from("./registries/user.reg", Hive::CurrentUser).unwrap();
         let key = registry.get_key(&regashii::KeyName::new("Software\\Wine"));
         assert!(key.is_some());
     }
 
     #[test]
-    fn registry_key_name() {
+    fn test_registry_key_has_correct_name() {
         let registry = Registry::try_from("./registries/user.reg", Hive::CurrentUser).unwrap();
         let key = registry
             .get_key(&regashii::KeyName::new("Software\\Wine"))
@@ -215,14 +223,7 @@ mod tests {
     }
 
     #[test]
-    fn registry_get_key_none() {
-        let registry = Registry::try_from("./registries/user.reg", Hive::CurrentUser).unwrap();
-        let key = registry.get_key(&regashii::KeyName::new("Software\\Wine\\NonExistent"));
-        assert!(key.is_none());
-    }
-
-    #[test]
-    fn registry_get_key_path() {
+    fn test_registry_key_path_is_correct() {
         let registry = Registry::try_from("./registries/user.reg", Hive::CurrentUser).unwrap();
         let key = registry
             .get_key(&regashii::KeyName::new("Software\\Wine"))
@@ -234,14 +235,14 @@ mod tests {
     }
 
     #[test]
-    fn registry_root() {
+    fn test_get_nonexistent_registry_key_returns_none() {
         let registry = Registry::try_from("./registries/user.reg", Hive::CurrentUser).unwrap();
-        let root = registry.root();
-        assert_eq!(root.borrow().name(), "HKEY_CURRENT_USER");
+        let key = registry.get_key(&regashii::KeyName::new("Software\\Wine\\NonExistent"));
+        assert!(key.is_none());
     }
 
     #[test]
-    fn count_registry_values() {
+    fn test_registry_key_value_count_is_correct() {
         let registry = Registry::try_from("./registries/user.reg", Hive::CurrentUser).unwrap();
         let key = registry
             .get_key(&regashii::KeyName::new("Software\\Wine\\X11 Driver"))
@@ -250,16 +251,29 @@ mod tests {
     }
 
     #[test]
-    fn get_registry_values() {
+    fn test_registry_key_contains_expected_values() {
         let registry = Registry::try_from("./registries/user.reg", Hive::CurrentUser).unwrap();
         let key = registry
-            .get_key(&regashii::KeyName::new("Software\\Wine\\X11 Driver"))
+            .get_key(&regashii::KeyName::new(
+                "Software\\Wine\\Fonts\\Replacements",
+            ))
             .unwrap();
-        assert!(key.borrow().values().iter().nth(0).is_some());
+
+        let value = key
+            .borrow()
+            .values()
+            .get(&regashii::ValueName::named("Arial Unicode MS"))
+            .cloned()
+            .unwrap();
+
+        assert_eq!(
+            value.value,
+            regashii::Value::Sz("Droid Sans Fallback".to_string())
+        );
     }
 
     #[test]
-    fn get_registry_values_none() {
+    fn test_registry_key_value_index_out_of_range_returns_none() {
         let registry = Registry::try_from("./registries/user.reg", Hive::CurrentUser).unwrap();
         let key = registry
             .get_key(&regashii::KeyName::new("Software\\Wine\\X11 Driver"))
@@ -268,7 +282,7 @@ mod tests {
     }
 
     #[test]
-    fn registry_children() {
+    fn test_root_key_children_count_is_correct() {
         let registry = Registry::try_from("./registries/user.reg", Hive::CurrentUser).unwrap();
         let key = registry.get_key(&regashii::KeyName::new("")).unwrap();
         let children = key.borrow().children();
