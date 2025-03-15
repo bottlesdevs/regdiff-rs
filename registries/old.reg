@@ -1,0 +1,17 @@
+WINE REGISTRY Version 2
+;; All keys relative to REGISTRY\\Machine
+
+[TestKeyDelete] 1742032912
+#time=1db959146b5541a
+
+[TestValueCreate] 1742032912
+#time=1db959146b5541a
+
+
+[TestValueDelete] 1742032912
+#time=1db959146b5541a
+"DeleteValue"="old"
+
+[TestValueUpdate] 1742032912
+#time=1db959146b5541a
+"TestValueUpdate"="old"
