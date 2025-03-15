@@ -4,7 +4,7 @@ use std::rc::{Rc, Weak};
 
 pub type SharedKey = Rc<RefCell<Key>>;
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Value {
     name: regashii::ValueName,
     value: regashii::Value,
@@ -30,6 +30,7 @@ pub struct Key {
     parent: Option<Weak<RefCell<Key>>>,
     children: Vec<SharedKey>,
     values: BTreeMap<regashii::ValueName, Value>,
+    inner: regashii::Key,
 }
 
 impl Key {
@@ -45,6 +46,7 @@ impl Key {
             parent: None,
             values,
             children: Vec::new(),
+            inner,
         }
     }
 
@@ -86,6 +88,10 @@ impl Key {
         key.borrow_mut().parent = parent;
 
         key
+    }
+
+    pub fn inner(&self) -> &regashii::Key {
+        &self.inner
     }
 }
 
