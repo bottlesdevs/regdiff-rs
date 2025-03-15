@@ -1,11 +1,14 @@
-use crate::registry::{SharedKey, Value};
+use crate::{
+    prelude::Registry,
+    registry::{SharedKey, Value},
+};
 use regashii::{KeyName, ValueName};
 
 #[derive(Debug)]
 pub enum Operation<Name, Data> {
     Add { name: Name, data: Data },
     Delete { name: Name },
-    Update { name: Name, old: Data, new: Data },
+    Update { name: Name, new: Data },
 }
 
 pub type ValueOperation = Operation<ValueName, regashii::Value>;
@@ -70,7 +73,6 @@ impl Diff for Value {
             }),
             (Some(old), Some(new)) if old != new => Some(ValueOperation::Update {
                 name: old.name().clone(),
-                old: old.value().clone(),
                 new: new.value().clone(),
             }),
             _ => None,
@@ -91,7 +93,6 @@ impl Diff for SharedKey {
             }],
             (Some(old_key), Some(new_key)) => {
                 let mut operations = vec![];
-                // TODO: Compare Values
                 let old_values: Vec<Value> = old_key
                     .borrow()
                     .values()
@@ -116,14 +117,10 @@ impl Diff for SharedKey {
                                 },
                                 Operation::Delete { name } => KeyOperation::Update {
                                     name: old_key.borrow().name().clone(),
-                                    old: old_key.borrow().inner().clone(),
-                                    new: regashii::Key::deleted()
-                                        .with(name, regashii::Value::Delete),
+                                    new: regashii::Key::new().with(name, regashii::Value::Delete),
                                 },
-                                Operation::Update { name, old, new } => KeyOperation::Update {
+                                Operation::Update { name, new } => KeyOperation::Update {
                                     name: old_key.borrow().name().clone(),
-                                    old: old_key.borrow().inner().clone(),
-                                    // new: regashii::Key::new().with(name, new),
                                     new: regashii::Key::new().with(name, new),
                                 },
                             };
@@ -131,7 +128,7 @@ impl Diff for SharedKey {
                         }
                     });
 
-                // TODO: Recurse into children
+                // Recursively diff children
                 let old_children = old_key.borrow().children();
                 let new_children = new_key.borrow().children();
 
