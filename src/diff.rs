@@ -144,3 +144,33 @@ impl Diff for SharedKey {
         }
     }
 }
+
+impl Diff for Registry {
+    type Output = regashii::Registry;
+    fn diff(this: Option<&Self>, other: Option<&Self>) -> Self::Output {
+        let mut patch = regashii::Registry::new(regashii::Format::Regedit4);
+
+        if this.is_none() {
+            return patch;
+        }
+
+        if other.is_none() {
+            return patch;
+        }
+
+        let o_reg = this.unwrap();
+        let n_reg = other.unwrap();
+
+        let diff = Diff::diff(Some(&o_reg.root()), Some(&n_reg.root()));
+
+        for op in diff {
+            patch = match op {
+                Operation::Add { name, data } => patch.with(name, data),
+                Operation::Delete { name } => patch.with(name, regashii::Key::deleted()),
+                Operation::Update { name, new } => patch.with(name, new),
+            };
+        }
+
+        patch
+    }
+}
