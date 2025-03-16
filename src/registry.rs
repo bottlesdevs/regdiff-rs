@@ -63,6 +63,12 @@ pub struct Key {
     deleted: bool,
 }
 
+impl PartialEq for Key {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name && self.values == other.values
+    }
+}
+
 impl Key {
     pub fn new(name: KeyName, key: regashii::Key) -> Self {
         let values = key

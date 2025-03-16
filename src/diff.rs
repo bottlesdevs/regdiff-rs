@@ -47,6 +47,7 @@ pub fn combine_values<'a, 'b>(
     pairs
 }
 
+#[derive(Debug)]
 pub enum Operation {
     Add {
         name: ValueName,
@@ -89,15 +90,12 @@ impl<'a> Diff<'a> for Key {
         match (this, other) {
             (Some(old), None) => Some(Key::deleted(old.name().clone())),
             (None, Some(new)) => Some(new.clone()),
-            (Some(old), Some(new)) => {
+            (Some(old), Some(new)) if old != new => {
                 let ops: Vec<Option<Operation>> = combine_values(old.values(), new.values())
                     .into_iter()
                     .map(|(old, new)| Value::diff(old, new))
+                    .filter(|op| op.is_some())
                     .collect();
-
-                if ops.is_empty() {
-                    return None;
-                }
 
                 let mut key = regashii::Key::new();
                 for op in ops {
