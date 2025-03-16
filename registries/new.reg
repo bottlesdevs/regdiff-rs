@@ -15,3 +15,7 @@ WINE REGISTRY Version 2
 [TestValueUpdate] 1742032912
 #time=1db959146b5541a
 "TestValueUpdate"="new"
+
+[TestNoChange] 1742032912
+#time=1db959146b5541a
+"TestNoChange"="old"
