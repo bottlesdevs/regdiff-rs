@@ -1,7 +1,7 @@
 use regashii::{KeyName, ValueName};
 use std::collections::BTreeMap;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum Hive {
     LocalMachine,
     CurrentUser,

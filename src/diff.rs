@@ -134,3 +134,109 @@ impl<'a> Diff<'a> for Registry {
         patch
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use regashii::KeyKind;
+
+    use super::*;
+    use crate::prelude::Hive;
+
+    fn generate_diff(hive: Hive) -> regashii::Registry {
+        let o_reg = Registry::try_from("./registries/old.reg", hive).unwrap();
+        let n_reg = Registry::try_from("./registries/new.reg", hive).unwrap();
+        Registry::diff(&o_reg, &n_reg)
+    }
+
+    #[test]
+    fn test_diff_delete_key() {
+        let hive = Hive::LocalMachine;
+        let diff = generate_diff(hive);
+
+        let test_key = regashii::KeyName::new(format!("{}\\{}", hive, "TestKeyDelete"));
+        let key = diff.keys().get(&test_key);
+        assert!(key.is_some());
+        let key = key.unwrap();
+        assert_eq!(key.kind(), KeyKind::Delete);
+        assert_eq!(key.values().len(), 0);
+    }
+
+    #[test]
+    fn test_diff_create_key() {
+        let hive = Hive::LocalMachine;
+        let diff = generate_diff(hive);
+
+        let test_key = regashii::KeyName::new(format!("{}\\{}", hive, "TestKeyCreate"));
+        let key = diff.keys().get(&test_key);
+        assert!(key.is_some());
+        let key = key.unwrap();
+        assert_eq!(key.kind(), KeyKind::Add);
+    }
+
+    #[test]
+    fn test_diff_value_create() {
+        let hive = Hive::LocalMachine;
+        let diff = generate_diff(hive);
+
+        let test_key = regashii::KeyName::new(format!("{}\\{}", hive, "TestValueCreate"));
+        let key = diff.keys().get(&test_key);
+        assert!(key.is_some());
+        let key = key.unwrap();
+
+        let value = key
+            .values()
+            .get(&regashii::ValueName::Named("CreateValue".to_string()));
+        assert!(value.is_some());
+
+        let value = value.unwrap();
+        assert_eq!(value, &regashii::Value::Sz("new".to_string()));
+    }
+
+    #[test]
+    fn test_diff_value_delete() {
+        let hive = Hive::LocalMachine;
+        let diff = generate_diff(hive);
+
+        let test_key = regashii::KeyName::new(format!("{}\\{}", hive, "TestValueDelete"));
+        let key = diff.keys().get(&test_key);
+        assert!(key.is_some());
+        let key = key.unwrap();
+
+        let value = key
+            .values()
+            .get(&regashii::ValueName::Named("DeleteValue".to_string()));
+        assert!(value.is_some());
+
+        let value = value.unwrap();
+        assert_eq!(value, &regashii::Value::Delete);
+    }
+
+    #[test]
+    fn test_diff_value_update() {
+        let hive = Hive::LocalMachine;
+        let diff = generate_diff(hive);
+
+        let test_key = regashii::KeyName::new(format!("{}\\{}", hive, "TestValueUpdate"));
+        let key = diff.keys().get(&test_key);
+        assert!(key.is_some());
+        let key = key.unwrap();
+
+        let value = key
+            .values()
+            .get(&regashii::ValueName::Named("TestValueUpdate".to_string()));
+        assert!(value.is_some());
+
+        let value = value.unwrap();
+        assert_eq!(value, &regashii::Value::Sz("new".to_string()));
+    }
+
+    #[test]
+    fn test_diff_no_change() {
+        let hive = Hive::LocalMachine;
+        let diff = generate_diff(hive);
+
+        let test_key = regashii::KeyName::new(format!("{}\\{}", hive, "TestNoChange"));
+        let key = diff.keys().get(&test_key);
+        assert!(key.is_none());
+    }
+}
