@@ -72,25 +72,23 @@ impl<'a> Diff<'a> for Key {
             (Some(old), None) => Some(Key::deleted(old.name().clone())),
             (None, Some(new)) => Some(new.clone()),
             (Some(old), Some(new)) if old != new => {
-                let ops: Vec<Option<Operation>> = combine(old.values(), new.values())
+                let ops: Vec<Operation> = combine(old.values(), new.values())
                     .into_iter()
-                    .map(|(old, new)| Value::diff(old, new))
-                    .filter(|op| op.is_some())
+                    .filter_map(|(old, new)| Value::diff(old, new))
                     .collect();
 
                 let mut key = regashii::Key::new();
                 for op in ops {
                     match op {
-                        Some(Operation::Add { name, value }) => {
+                        Operation::Add { name, value } => {
                             key = key.with(name, value);
                         }
-                        Some(Operation::Delete { name }) => {
+                        Operation::Delete { name } => {
                             key = key.with(name, regashii::Value::Delete);
                         }
-                        Some(Operation::Modify { name, value }) => {
+                        Operation::Modify { name, value } => {
                             key = key.with(name, value);
                         }
-                        None => {}
                     }
                 }
                 Some(Key::new(old.name().clone(), key))
