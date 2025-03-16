@@ -1,54 +1,19 @@
+use crate::prelude::Registry;
+use crate::prelude::{Key, Value};
+use regashii::{KeyName, ValueName};
 use std::collections::BTreeMap;
 
-use crate::{
-    prelude::Registry,
-    registry::{SharedKey, Value},
-};
-
-#[derive(Debug)]
-pub enum Operation {
-    Add {
-        name: regashii::KeyName,
-        data: regashii::Key,
-    },
-    Delete {
-        name: regashii::KeyName,
-    },
-    Update {
-        name: regashii::KeyName,
-        new: regashii::Key,
-    },
-}
-
-pub trait Diff {
+pub trait Diff<'a> {
+    type Input: 'a;
     type Output;
-    fn diff(this: Option<&Self>, other: Option<&Self>) -> Self::Output;
+    fn diff(this: Self::Input, other: Self::Input) -> Self::Output;
 }
 
-pub fn combine_child_keys(
-    old: &BTreeMap<regashii::KeyName, SharedKey>,
-    new: &BTreeMap<regashii::KeyName, SharedKey>,
-) -> Vec<(Option<SharedKey>, Option<SharedKey>)> {
-    let mut pairs: Vec<(Option<SharedKey>, Option<SharedKey>)> = Vec::new();
-
-    for (name, value) in old.iter() {
-        pairs.push((Some(value.clone()), new.get(name).cloned()));
-    }
-
-    for (name, value) in new.iter() {
-        if !old.contains_key(name) {
-            pairs.push((None, Some(value.clone())));
-        }
-    }
-
-    pairs
-}
-
-pub fn combine_values<'a, 'b>(
-    old: &'a BTreeMap<regashii::ValueName, Value>,
-    new: &'b BTreeMap<regashii::ValueName, Value>,
-) -> Vec<(Option<&'a Value>, Option<&'b Value>)> {
-    let mut pairs: Vec<(Option<&'a Value>, Option<&'b Value>)> = Vec::new();
+pub fn combine_keys<'a, 'b>(
+    old: &'a BTreeMap<KeyName, Key>,
+    new: &'b BTreeMap<KeyName, Key>,
+) -> Vec<(Option<&'a Key>, Option<&'b Key>)> {
+    let mut pairs: Vec<(Option<&Key>, Option<&Key>)> = Vec::new();
 
     for (name, value) in old.iter() {
         pairs.push((Some(value), new.get(name)));
@@ -63,94 +28,111 @@ pub fn combine_values<'a, 'b>(
     pairs
 }
 
-impl Diff for Value {
+pub fn combine_values<'a, 'b>(
+    old: &'a BTreeMap<ValueName, Value>,
+    new: &'b BTreeMap<ValueName, Value>,
+) -> Vec<(Option<&'a Value>, Option<&'b Value>)> {
+    let mut pairs: Vec<(Option<&Value>, Option<&Value>)> = Vec::new();
+
+    for (name, value) in old.iter() {
+        pairs.push((Some(value), new.get(name)));
+    }
+
+    for (name, value) in new.iter() {
+        if !old.contains_key(name) {
+            pairs.push((None, Some(value)));
+        }
+    }
+
+    pairs
+}
+
+pub enum Operation {
+    Add {
+        name: ValueName,
+        value: regashii::Value,
+    },
+    Delete {
+        name: ValueName,
+    },
+    Modify {
+        name: ValueName,
+        value: regashii::Value,
+    },
+}
+
+impl<'a> Diff<'a> for Value {
+    type Input = Option<&'a Value>;
     type Output = Option<Operation>;
-    fn diff(this: Option<&Self>, other: Option<&Self>) -> Self::Output {
-        match (this, other) {
-            (Some(old), None) => Some(Operation::Update {
-                name: old.key_name().clone(),
-                new: regashii::Key::new().with(old.name().clone(), regashii::Value::Delete),
+    fn diff(old: Self::Input, new: Self::Input) -> Self::Output {
+        match (old, new) {
+            (Some(old), None) => Some(Operation::Delete {
+                name: old.name().clone(),
             }),
             (None, Some(new)) => Some(Operation::Add {
-                name: new.key_name().clone(),
-                data: regashii::Key::new().with(new.name().clone(), new.value().clone()),
+                name: new.name().clone(),
+                value: new.value().clone(),
             }),
-            (Some(old), Some(new)) if old != new => Some(Operation::Update {
-                name: old.key_name().clone(),
-                new: regashii::Key::new().with(old.name().clone(), new.value().clone()),
+            (Some(old), Some(new)) if old != new => Some(Operation::Modify {
+                name: new.name().clone(),
+                value: new.value().clone(),
             }),
             _ => None,
         }
     }
 }
 
-impl Diff for SharedKey {
-    type Output = Vec<Operation>;
-    fn diff(this: Option<&Self>, other: Option<&Self>) -> Self::Output {
+impl<'a> Diff<'a> for Key {
+    type Input = Option<&'a Key>;
+    type Output = Option<Key>;
+    fn diff(this: Self::Input, other: Self::Input) -> Self::Output {
         match (this, other) {
-            (Some(old), None) => vec![Operation::Delete {
-                name: old.borrow().path().clone(),
-            }],
-            (None, Some(new)) => vec![Operation::Add {
-                name: new.borrow().path().clone(),
-                data: new.borrow().inner(),
-            }],
-            (Some(old_key), Some(new_key)) => {
-                let mut operations = vec![];
-                let old_key_ref = old_key.borrow();
-                let new_key_ref = new_key.borrow();
-
-                combine_values(old_key_ref.values(), new_key_ref.values())
+            (Some(old), None) => Some(Key::deleted(old.name().clone())),
+            (None, Some(new)) => Some(new.clone()),
+            (Some(old), Some(new)) => {
+                let ops: Vec<Option<Operation>> = combine_values(old.values(), new.values())
                     .into_iter()
-                    .for_each(|(old_val, new_val)| {
-                        if let Some(op) = Value::diff(old_val, new_val) {
-                            operations.push(op);
+                    .map(|(old, new)| Value::diff(old, new))
+                    .collect();
+
+                if ops.is_empty() {
+                    return None;
+                }
+
+                let mut key = regashii::Key::new();
+                for op in ops {
+                    match op {
+                        Some(Operation::Add { name, value }) => {
+                            key = key.with(name, value);
                         }
-                    });
-
-                // Recursively diff children
-                let old_children = old_key_ref.children();
-                let new_children = new_key_ref.children();
-
-                combine_child_keys(&old_children, &new_children)
-                    .into_iter()
-                    .for_each(|(old, new)| {
-                        operations.extend(SharedKey::diff(old.as_ref(), new.as_ref()));
-                    });
-
-                operations
+                        Some(Operation::Delete { name }) => {
+                            key = key.with(name, regashii::Value::Delete);
+                        }
+                        Some(Operation::Modify { name, value }) => {
+                            key = key.with(name, value);
+                        }
+                        None => {}
+                    }
+                }
+                Some(Key::new(old.name().clone(), key))
             }
-            _ => Vec::new(),
+            _ => None,
         }
     }
 }
 
-impl Diff for Registry {
+impl<'a> Diff<'a> for Registry {
+    type Input = &'a Registry;
     type Output = regashii::Registry;
-    fn diff(this: Option<&Self>, other: Option<&Self>) -> Self::Output {
+    fn diff(o_reg: Self::Input, n_reg: Self::Input) -> Self::Output {
         let mut patch = regashii::Registry::new(regashii::Format::Regedit4);
 
-        if this.is_none() {
-            return patch;
+        let pairs = combine_keys(o_reg.keys(), n_reg.keys());
+        for (this, other) in pairs {
+            if let Some(key) = Key::diff(this, other) {
+                patch = patch.with(key.name().clone(), key.into());
+            }
         }
-
-        if other.is_none() {
-            return patch;
-        }
-
-        let o_reg = this.unwrap();
-        let n_reg = other.unwrap();
-
-        let diff = Diff::diff(Some(&o_reg.root()), Some(&n_reg.root()));
-
-        for op in diff {
-            patch = match op {
-                Operation::Add { name, data } => patch.with(name, data),
-                Operation::Delete { name } => patch.with(name, regashii::Key::deleted()),
-                Operation::Update { name, new } => patch.with(name, new),
-            };
-        }
-
         patch
     }
 }
