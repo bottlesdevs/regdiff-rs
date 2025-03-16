@@ -3,22 +3,35 @@ use crate::prelude::{Key, Value};
 use regashii::ValueName;
 use std::collections::BTreeMap;
 
+/// A trait defining how to compute a diff between two items.
+///
+/// This trait is generic over a lifetime 'a, with an associated
+/// Input type (the type that is diffed) and Output type (the difference result).
 pub trait Diff<'a> {
     type Input: 'a;
     type Output;
+
+    /// Compute the diff between two inputs and return the output.
     fn diff(this: Self::Input, other: Self::Input) -> Self::Output;
 }
 
+/// Combines two BTreeMaps (an "old" and a "new" version) by pairing
+/// values with matching keys. For keys only in the old map, the new value is None;
+/// and for keys only in the new map, the old value is None.
+///
+/// Returns a Vec of tuples, each containing an Option referencing a value from old and new.
 pub fn combine<'a, 'b, K: std::cmp::Ord, V>(
     old: &'a BTreeMap<K, V>,
     new: &'b BTreeMap<K, V>,
 ) -> Vec<(Option<&'a V>, Option<&'b V>)> {
     let mut pairs: Vec<(Option<&V>, Option<&V>)> = Vec::new();
 
+    // For every entry present in the old map, pair it with the corresponding value in the new map (if it exists)
     for (name, value) in old.iter() {
         pairs.push((Some(value), new.get(name)));
     }
 
+    // For every entry in the new map that is not present in the old map, add a pair with None as the old value.
     for (name, value) in new.iter() {
         if !old.contains_key(name) {
             pairs.push((None, Some(value)));
@@ -28,6 +41,7 @@ pub fn combine<'a, 'b, K: std::cmp::Ord, V>(
     pairs
 }
 
+/// Enum representing possible operations for modifying registry values.
 #[derive(Debug)]
 pub enum Operation {
     Add {
@@ -44,8 +58,17 @@ pub enum Operation {
 }
 
 impl<'a> Diff<'a> for Value {
+    // The diff implementation for registry values compares two optional Value references.
     type Input = Option<&'a Value>;
+    // The output is an optional Operation detailing what change should be applied.
     type Output = Option<Operation>;
+
+    /// Computes the difference between two values.
+    ///
+    /// If a value exists in old but not in new, a Delete operation is generated.
+    /// If a value exists in new but not in old, an Add operation is generated.
+    /// If both exist but the values differ, a Modify operation is generated.
+    /// If they are equal, returns None.
     fn diff(old: Self::Input, new: Self::Input) -> Self::Output {
         match (old, new) {
             (Some(old), None) => Some(Operation::Delete {
@@ -65,12 +88,26 @@ impl<'a> Diff<'a> for Value {
 }
 
 impl<'a> Diff<'a> for Key {
+    // The diff implementation for Keys compares two optional Key references.
     type Input = Option<&'a Key>;
+    // The output is an optional Key that represents changes.
     type Output = Option<Key>;
+
+    /// Computes the diff between two keys.
+    ///
+    /// This function compares the two keys:
+    /// - If the key exists only in the old registry, it is marked as deleted.
+    /// - If the key exists only in the new registry, it is marked as newly created.
+    /// - If the key exists in both and there are differences in their values,
+    ///   each value difference is computed and the resulting operations are applied.
+    /// - If no differences are found, returns None.
     fn diff(this: Self::Input, other: Self::Input) -> Self::Output {
         match (this, other) {
+            // The key is present in old, but missing in new, so mark it as deleted.
             (Some(old), None) => Some(Key::deleted(old.name().clone())),
+            // The key is new.
             (None, Some(new)) => Some(new.clone()),
+            // Both keys exist but they differ, so compute value differences.
             (Some(old), Some(new)) if old != new => {
                 let ops: Vec<Operation> = combine(old.values(), new.values())
                     .into_iter()
@@ -99,8 +136,15 @@ impl<'a> Diff<'a> for Key {
 }
 
 impl<'a> Diff<'a> for Registry {
+    // The diff implementation for Registries compares two Registry references.
     type Input = &'a Registry;
+    // The output is a new regashii::Registry containing the diff.
     type Output = regashii::Registry;
+
+    /// Computes the diff between two registries.
+    ///
+    /// This function iterates over the keys of both registries, calculates
+    /// their individual differences, and then constructs a new registry patch containing all changes.
     fn diff(o_reg: Self::Input, n_reg: Self::Input) -> Self::Output {
         let mut patch = regashii::Registry::new(regashii::Format::Regedit4);
 
