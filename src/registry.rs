@@ -52,6 +52,16 @@ impl Value {
     pub fn value(&self) -> &regashii::Value {
         &self.value
     }
+
+    /// Converts the [Value] into a tuple containing the underlying value name and data.
+    pub fn into_regashii_value(self) -> (ValueName, regashii::Value) {
+        (self.name, self.value)
+    }
+
+    /// Converts the [Value] into a tuple containing the underlying value name and a deleted value.
+    pub fn into_deleted_value(self) -> (ValueName, regashii::Value) {
+        (self.name, regashii::Value::Delete)
+    }
 }
 
 /// Represents a registry key, which can contain multiple values.
@@ -61,13 +71,26 @@ pub struct Key {
     name: KeyName,
     /// A map of registry values within the key.
     values: BTreeMap<ValueName, Value>,
-    /// Flag indicating whether the key is to be deleted.
-    deleted: bool,
 }
 
 impl PartialEq for Key {
     fn eq(&self, other: &Self) -> bool {
         self.name == other.name && self.values == other.values
+    }
+}
+
+impl From<Key> for (KeyName, regashii::Key) {
+    fn from(key: Key) -> Self {
+        let name = key.name;
+        let values = key.values;
+
+        let mut key = regashii::Key::new();
+
+        for (name, value) in values.into_iter() {
+            key = key.with(name, value.value)
+        }
+
+        (name, key)
     }
 }
 
@@ -89,11 +112,7 @@ impl Key {
                 (key_name.clone(), new_value)
             })
             .collect();
-        Self {
-            name,
-            values,
-            deleted: false,
-        }
+        Self { name, values }
     }
 
     /// Returns a reference to the registry key's name.
@@ -106,35 +125,23 @@ impl Key {
         &self.values
     }
 
-    /// Creates a new [Key] that represents a deleted registry key.
-    ///
-    /// # Arguments
-    ///
-    /// * `name` - The registry key name.
-    pub fn deleted(name: KeyName) -> Self {
-        Self {
-            name,
-            values: BTreeMap::new(),
-            deleted: true,
-        }
-    }
-}
+    /// Converts the [Key] into a tuple containing the underlying key name and the regashii key.
+    pub fn into_regashii_key(self) -> (KeyName, regashii::Key) {
+        let name = self.name;
+        let values = self.values;
 
-impl Into<regashii::Key> for Key {
-    fn into(self) -> regashii::Key {
-        // Create the underlying regashii::Key with the appropriate deletion state.
-        let mut key = if self.deleted {
-            regashii::Key::deleted()
-        } else {
-            regashii::Key::new()
-        };
+        let mut key = regashii::Key::new();
 
-        // Add each value to the regashii key instance.
-        for (name, value) in self.values.into_iter() {
+        for (name, value) in values.into_iter() {
             key = key.with(name, value.value)
         }
 
-        key
+        (name, key)
+    }
+
+    /// Converts the [Key] into a tuple containing the underlying key name and a deleted key.
+    pub fn into_deleted_key(self) -> (KeyName, regashii::Key) {
+        (self.name, regashii::Key::deleted())
     }
 }
 
