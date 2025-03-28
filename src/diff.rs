@@ -104,17 +104,13 @@ impl Diff for Key {
                 new_data: new.clone(),
             },
             (Some(old), Some(new)) if old != new => {
-                let ops: Vec<Operation<&Value>> = combine(old.values(), new.values())
+                let pairs = combine(old.values(), new.values())
                     .into_iter()
-                    .map(|(old, new)| Value::diff(old, new))
-                    .collect();
+                    .filter_map(|(old, new)| Value::diff(old, new).to_value())
+                    .collect::<Vec<_>>();
 
-                let mut key = regashii::Key::new();
-                for op in ops {
-                    if let Some((name, value)) = op.to_value() {
-                        key = key.with(name, value);
-                    }
-                }
+                let key = regashii::Key::new().with_many(pairs);
+
                 Operation::Add {
                     data: Key::new(new.name().clone(), key),
                 }
@@ -146,15 +142,13 @@ impl Diff for Registry {
     /// This function iterates over the keys of both registries, calculates
     /// their individual differences, and then constructs a new registry patch containing all changes.
     fn diff<'a>(old: Self::Input<'a>, new: Self::Input<'a>) -> Self::Output<'a> {
-        let mut patch = regashii::Registry::new(regashii::Format::Regedit4);
+        let pairs = combine(old.keys(), new.keys())
+            .into_iter()
+            .map(|(old, new)| Key::diff(old, new).to_keys())
+            .flatten()
+            .collect::<Vec<_>>();
 
-        let pairs = combine(old.keys(), new.keys());
-        for (this, other) in pairs {
-            for (name, key) in Key::diff(this, other).to_keys() {
-                patch = patch.with(name, key);
-            }
-        }
-        patch
+        regashii::Registry::new(regashii::Format::Regedit4).with_many(pairs)
     }
 }
 
