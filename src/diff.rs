@@ -20,32 +20,32 @@ pub trait Diff {
     type Output<'a>;
 
     fn diff<'a>(old: Self::Input<'a>, new: Self::Input<'a>) -> Self::Output<'a>;
-}
 
-/// Combines two BTreeMaps (an "old" and a "new" version) by pairing
-/// values with matching keys. For keys only in the old map, the new value is None;
-/// and for keys only in the new map, the old value is None.
-///
-/// Returns a Vec of tuples, each containing an Option referencing a value from old and new.
-fn combine<'a, 'b, K: std::cmp::Ord, V>(
-    old: &'a BTreeMap<K, V>,
-    new: &'b BTreeMap<K, V>,
-) -> Vec<(Option<&'a V>, Option<&'b V>)> {
-    let mut pairs: Vec<(Option<&V>, Option<&V>)> = Vec::new();
+    /// Combines two BTreeMaps (an "old" and a "new" version) by pairing
+    /// values with matching keys. For keys only in the old map, the new value is None;
+    /// and for keys only in the new map, the old value is None.
+    ///
+    /// Returns a Vec of tuples, each containing an Option referencing a value from old and new.
+    fn combine<'a, 'b, K: std::cmp::Ord, V>(
+        old: &'a BTreeMap<K, V>,
+        new: &'b BTreeMap<K, V>,
+    ) -> Vec<(Option<&'a V>, Option<&'b V>)> {
+        let mut pairs: Vec<(Option<&V>, Option<&V>)> = Vec::new();
 
-    // For every entry present in the old map, pair it with the corresponding value in the new map (if it exists)
-    for (name, value) in old.iter() {
-        pairs.push((Some(value), new.get(name)));
-    }
-
-    // For every entry in the new map that is not present in the old map, add a pair with None as the old value.
-    for (name, value) in new.iter() {
-        if !old.contains_key(name) {
-            pairs.push((None, Some(value)));
+        // For every entry present in the old map, pair it with the corresponding value in the new map (if it exists)
+        for (name, value) in old.iter() {
+            pairs.push((Some(value), new.get(name)));
         }
-    }
 
-    pairs
+        // For every entry in the new map that is not present in the old map, add a pair with None as the old value.
+        for (name, value) in new.iter() {
+            if !old.contains_key(name) {
+                pairs.push((None, Some(value)));
+            }
+        }
+
+        pairs
+    }
 }
 
 impl Diff for Value {
@@ -104,7 +104,7 @@ impl Diff for Key {
                 new_data: new.clone(),
             },
             (Some(old), Some(new)) if old != new => {
-                let pairs = combine(old.values(), new.values())
+                let pairs = Self::combine(old.values(), new.values())
                     .into_iter()
                     .filter_map(|(old, new)| Value::diff(old, new).to_value())
                     .collect::<Vec<_>>();
@@ -142,7 +142,7 @@ impl Diff for Registry {
     /// This function iterates over the keys of both registries, calculates
     /// their individual differences, and then constructs a new registry patch containing all changes.
     fn diff<'a>(old: Self::Input<'a>, new: Self::Input<'a>) -> Self::Output<'a> {
-        let pairs = combine(old.keys(), new.keys())
+        let pairs = Self::combine(old.keys(), new.keys())
             .into_iter()
             .map(|(old, new)| Key::diff(old, new).to_keys())
             .flatten()
