@@ -65,18 +65,12 @@ impl Value {
 }
 
 /// Represents a registry key, which can contain multiple values.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Key {
     /// The full registry key name/path.
     name: KeyName,
     /// A map of registry values within the key.
     values: BTreeMap<ValueName, Value>,
-}
-
-impl PartialEq for Key {
-    fn eq(&self, other: &Self) -> bool {
-        self.name == other.name && self.values == other.values
-    }
 }
 
 impl From<Key> for (KeyName, regashii::Key) {
