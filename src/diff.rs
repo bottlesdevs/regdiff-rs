@@ -8,7 +8,6 @@ pub enum Operation<Data> {
     Unchanged,
     Add { data: Data },
     Delete { data: Data },
-    Modify { old_data: Data, new_data: Data },
 }
 
 /// A trait defining how to compute a diff between two items.
@@ -75,7 +74,6 @@ impl Operation<&Value> {
         match self {
             Operation::Add { data } => Some(data.clone().into_regashii_value()),
             Operation::Delete { data } => Some(data.clone().into_deleted_value()),
-            Operation::Modify { new_data, .. } => Some(new_data.clone().into_regashii_value()),
             _ => None,
         }
     }
@@ -120,7 +118,6 @@ impl Operation<Key> {
         match self {
             Operation::Add { data } => Some(data.into_regashii_key()),
             Operation::Delete { data } => Some(data.into_deleted_key()),
-            Operation::Modify { new_data, .. } => Some(new_data.into_regashii_key()),
             Operation::Unchanged => None,
         }
     }
