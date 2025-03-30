@@ -1,6 +1,7 @@
 use crate::prelude::{Key, Registry, Value};
 use regashii::{KeyName, ValueName};
-use std::collections::BTreeMap;
+use std::collections::HashMap;
+use std::hash::Hash;
 
 /// Enum representing possible operations for modifying registry values.
 #[derive(Debug)]
@@ -8,7 +9,6 @@ pub enum Operation<Data> {
     Unchanged,
     Add { data: Data },
     Delete { data: Data },
-    Modify { old_data: Data, new_data: Data },
 }
 
 /// A trait defining how to compute a diff between two items.
@@ -20,32 +20,32 @@ pub trait Diff {
     type Output<'a>;
 
     fn diff<'a>(old: Self::Input<'a>, new: Self::Input<'a>) -> Self::Output<'a>;
-}
 
-/// Combines two BTreeMaps (an "old" and a "new" version) by pairing
-/// values with matching keys. For keys only in the old map, the new value is None;
-/// and for keys only in the new map, the old value is None.
-///
-/// Returns a Vec of tuples, each containing an Option referencing a value from old and new.
-fn combine<'a, 'b, K: std::cmp::Ord, V>(
-    old: &'a BTreeMap<K, V>,
-    new: &'b BTreeMap<K, V>,
-) -> Vec<(Option<&'a V>, Option<&'b V>)> {
-    let mut pairs: Vec<(Option<&V>, Option<&V>)> = Vec::new();
+    /// Combines two BTreeMaps (an "old" and a "new" version) by pairing
+    /// values with matching keys. For keys only in the old map, the new value is None;
+    /// and for keys only in the new map, the old value is None.
+    ///
+    /// Returns a Vec of tuples, each containing an Option referencing a value from old and new.
+    fn combine<'a, 'b, K: Hash + Eq, V>(
+        old: &'a HashMap<K, V>,
+        new: &'b HashMap<K, V>,
+    ) -> Vec<(Option<&'a V>, Option<&'b V>)> {
+        let mut pairs: Vec<(Option<&V>, Option<&V>)> = Vec::new();
 
-    // For every entry present in the old map, pair it with the corresponding value in the new map (if it exists)
-    for (name, value) in old.iter() {
-        pairs.push((Some(value), new.get(name)));
-    }
-
-    // For every entry in the new map that is not present in the old map, add a pair with None as the old value.
-    for (name, value) in new.iter() {
-        if !old.contains_key(name) {
-            pairs.push((None, Some(value)));
+        // For every entry present in the old map, pair it with the corresponding value in the new map (if it exists)
+        for (name, value) in old.iter() {
+            pairs.push((Some(value), new.get(name)));
         }
-    }
 
-    pairs
+        // For every entry in the new map that is not present in the old map, add a pair with None as the old value.
+        for (name, value) in new.iter() {
+            if !old.contains_key(name) {
+                pairs.push((None, Some(value)));
+            }
+        }
+
+        pairs
+    }
 }
 
 impl Diff for Value {
@@ -62,10 +62,9 @@ impl Diff for Value {
         match (old, new) {
             (Some(old), None) => Operation::Delete { data: old },
             (None, Some(new)) => Operation::Add { data: new },
-            (Some(old), Some(new)) if old != new => Operation::Modify {
-                old_data: old,
-                new_data: new,
-            },
+            // Generating a Add operation instead of Modify because
+            // adding a new value always overwrites the existing one if it exists.
+            (Some(old), Some(new)) if old != new => Operation::Add { data: new },
             _ => Operation::Unchanged,
         }
     }
@@ -76,7 +75,6 @@ impl Operation<&Value> {
         match self {
             Operation::Add { data } => Some(data.clone().into_regashii_value()),
             Operation::Delete { data } => Some(data.clone().into_deleted_value()),
-            Operation::Modify { new_data, .. } => Some(new_data.clone().into_regashii_value()),
             _ => None,
         }
     }
@@ -99,22 +97,14 @@ impl Diff for Key {
         match (old, new) {
             (Some(old), None) => Operation::Delete { data: old.clone() },
             (None, Some(new)) => Operation::Add { data: new.clone() },
-            (Some(old), Some(new)) if old.name() != new.name() => Operation::Modify {
-                old_data: old.clone(),
-                new_data: new.clone(),
-            },
             (Some(old), Some(new)) if old != new => {
-                let ops: Vec<Operation<&Value>> = combine(old.values(), new.values())
+                let pairs = Self::combine(old.values(), new.values())
                     .into_iter()
-                    .map(|(old, new)| Value::diff(old, new))
-                    .collect();
+                    .filter_map(|(old, new)| Value::diff(old, new).to_value())
+                    .collect::<Vec<_>>();
 
-                let mut key = regashii::Key::new();
-                for op in ops {
-                    if let Some((name, value)) = op.to_value() {
-                        key = key.with(name, value);
-                    }
-                }
+                let key = regashii::Key::new().with_many(pairs);
+
                 Operation::Add {
                     data: Key::new(new.name().clone(), key),
                 }
@@ -125,14 +115,11 @@ impl Diff for Key {
 }
 
 impl Operation<Key> {
-    fn to_keys(self) -> Vec<(KeyName, regashii::Key)> {
+    fn to_key(self) -> Option<(KeyName, regashii::Key)> {
         match self {
-            Operation::Unchanged => Vec::new(),
-            Operation::Add { data } => vec![data.into_regashii_key()],
-            Operation::Delete { data } => vec![data.into_deleted_key()],
-            Operation::Modify { old_data, new_data } => {
-                vec![old_data.into_deleted_key(), new_data.into_regashii_key()]
-            }
+            Operation::Add { data } => Some(data.into_regashii_key()),
+            Operation::Delete { data } => Some(data.into_deleted_key()),
+            Operation::Unchanged => None,
         }
     }
 }
@@ -146,15 +133,12 @@ impl Diff for Registry {
     /// This function iterates over the keys of both registries, calculates
     /// their individual differences, and then constructs a new registry patch containing all changes.
     fn diff<'a>(old: Self::Input<'a>, new: Self::Input<'a>) -> Self::Output<'a> {
-        let mut patch = regashii::Registry::new(regashii::Format::Regedit4);
+        let pairs = Self::combine(old.keys(), new.keys())
+            .into_iter()
+            .filter_map(|(old, new)| Key::diff(old, new).to_key())
+            .collect::<Vec<_>>();
 
-        let pairs = combine(old.keys(), new.keys());
-        for (this, other) in pairs {
-            for (name, key) in Key::diff(this, other).to_keys() {
-                patch = patch.with(name, key);
-            }
-        }
-        patch
+        regashii::Registry::new(regashii::Format::Regedit4).with_many(pairs)
     }
 }
 

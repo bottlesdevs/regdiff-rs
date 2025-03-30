@@ -1,5 +1,5 @@
 use regashii::{KeyName, ValueName};
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 
 /// The supported registry hives (root keys).
 #[derive(Clone, Copy, Debug)]
@@ -65,18 +65,12 @@ impl Value {
 }
 
 /// Represents a registry key, which can contain multiple values.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Key {
     /// The full registry key name/path.
     name: KeyName,
     /// A map of registry values within the key.
-    values: BTreeMap<ValueName, Value>,
-}
-
-impl PartialEq for Key {
-    fn eq(&self, other: &Self) -> bool {
-        self.name == other.name && self.values == other.values
-    }
+    values: HashMap<ValueName, Value>,
 }
 
 impl From<Key> for (KeyName, regashii::Key) {
@@ -121,7 +115,7 @@ impl Key {
     }
 
     /// Returns a reference to the sorted map of values in the registry key.
-    pub fn values(&self) -> &BTreeMap<ValueName, Value> {
+    pub fn values(&self) -> &HashMap<ValueName, Value> {
         &self.values
     }
 
@@ -151,12 +145,12 @@ impl Key {
 /// of registry keys.
 pub struct Registry {
     /// A map of registry keys keyed by their name.
-    keys: BTreeMap<KeyName, Key>,
+    keys: HashMap<KeyName, Key>,
 }
 
 impl Registry {
     /// Returns a reference to the entire collection of registry keys.
-    pub fn keys(&self) -> &BTreeMap<KeyName, Key> {
+    pub fn keys(&self) -> &HashMap<KeyName, Key> {
         &self.keys
     }
 
