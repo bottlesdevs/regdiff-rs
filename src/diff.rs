@@ -62,10 +62,9 @@ impl Diff for Value {
         match (old, new) {
             (Some(old), None) => Operation::Delete { data: old },
             (None, Some(new)) => Operation::Add { data: new },
-            (Some(old), Some(new)) if old != new => Operation::Modify {
-                old_data: old,
-                new_data: new,
-            },
+            // Generating a Add operation instead of Modify because
+            // adding a new value always overwrites the existing one if it exists.
+            (Some(old), Some(new)) if old != new => Operation::Add { data: new },
             _ => Operation::Unchanged,
         }
     }
