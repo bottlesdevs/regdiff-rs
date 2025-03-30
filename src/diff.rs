@@ -116,14 +116,12 @@ impl Diff for Key {
 }
 
 impl Operation<Key> {
-    fn to_keys(self) -> Vec<(KeyName, regashii::Key)> {
+    fn to_key(self) -> Option<(KeyName, regashii::Key)> {
         match self {
-            Operation::Unchanged => Vec::new(),
-            Operation::Add { data } => vec![data.into_regashii_key()],
-            Operation::Delete { data } => vec![data.into_deleted_key()],
-            Operation::Modify { old_data, new_data } => {
-                vec![old_data.into_deleted_key(), new_data.into_regashii_key()]
-            }
+            Operation::Add { data } => Some(data.into_regashii_key()),
+            Operation::Delete { data } => Some(data.into_deleted_key()),
+            Operation::Modify { new_data, .. } => Some(new_data.into_regashii_key()),
+            Operation::Unchanged => None,
         }
     }
 }
@@ -139,8 +137,7 @@ impl Diff for Registry {
     fn diff<'a>(old: Self::Input<'a>, new: Self::Input<'a>) -> Self::Output<'a> {
         let pairs = Self::combine(old.keys(), new.keys())
             .into_iter()
-            .map(|(old, new)| Key::diff(old, new).to_keys())
-            .flatten()
+            .filter_map(|(old, new)| Key::diff(old, new).to_key())
             .collect::<Vec<_>>();
 
         regashii::Registry::new(regashii::Format::Regedit4).with_many(pairs)
