@@ -99,10 +99,6 @@ impl Diff for Key {
         match (old, new) {
             (Some(old), None) => Operation::Delete { data: old.clone() },
             (None, Some(new)) => Operation::Add { data: new.clone() },
-            (Some(old), Some(new)) if old.name() != new.name() => Operation::Modify {
-                old_data: old.clone(),
-                new_data: new.clone(),
-            },
             (Some(old), Some(new)) if old != new => {
                 let pairs = Self::combine(old.values(), new.values())
                     .into_iter()
