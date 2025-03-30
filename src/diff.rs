@@ -1,6 +1,7 @@
 use crate::prelude::{Key, Registry, Value};
 use regashii::{KeyName, ValueName};
-use std::collections::BTreeMap;
+use std::collections::HashMap;
+use std::hash::Hash;
 
 /// Enum representing possible operations for modifying registry values.
 #[derive(Debug)]
@@ -25,9 +26,9 @@ pub trait Diff {
     /// and for keys only in the new map, the old value is None.
     ///
     /// Returns a Vec of tuples, each containing an Option referencing a value from old and new.
-    fn combine<'a, 'b, K: std::cmp::Ord, V>(
-        old: &'a BTreeMap<K, V>,
-        new: &'b BTreeMap<K, V>,
+    fn combine<'a, 'b, K: Hash + Eq, V>(
+        old: &'a HashMap<K, V>,
+        new: &'b HashMap<K, V>,
     ) -> Vec<(Option<&'a V>, Option<&'b V>)> {
         let mut pairs: Vec<(Option<&V>, Option<&V>)> = Vec::new();
 
